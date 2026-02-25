@@ -1,0 +1,165 @@
+import pandas as pd
+import statsmodels.api as sm
+from sklearn.preprocessing import minmax_scale
+from statsmodels.iolib.summary2 import summary_col
+
+
+def fit_ols_with_constant(X: pd.DataFrame, y: pd.DataFrame):
+    """Fit an OLS model with an intercept (constant)."""
+    X_with_const = sm.add_constant(X)
+    return sm.OLS(y, X_with_const).fit()
+
+
+def Gender_difference():
+    # =========================
+    # Configuration (single source of truth)
+    # =========================
+    dependent_var = "Distance"
+    key_explanatory_var = "Gender"
+    distance_unit_km = 1000  # Convert distance to 'thousand km' by dividing by 1000
+
+    input_tsv_path = "../data_revise/revise_pat_distance_original3_mean_regr_data_update_final.tsv"
+    output_table_path = f"../Empirical_result_include_examiner/revise_result_us_inventor_original3_{key_explanatory_var}.csv"
+    tsv_separator = "\t"
+
+    # =========================
+    # Variable groups (define once, reuse everywhere)
+    # =========================
+    continuous_controls = [
+        "Teamsize",
+        "Number of references",
+        "Number of other references",
+        "Number of figures",
+        "Number of sheets",
+        "Number of claims",
+        "Withdrawn",
+        "Pct",
+        "Priority Num",
+        "Nation diversity",
+        "Attorney",
+        "First inventor's cumulated patents",
+        "Assignees' cumulated patents",
+        "Fund",
+        # If you want to include this control, add it here and it will flow through automatically:
+        # "First inventor's career age",
+    ]
+
+    fixed_effect_vars = [
+        "State",
+        "Patent type",
+        "Patent assignee type",
+        "Technological field",
+        "Application year",
+    ]
+
+    required_columns = [dependent_var, key_explanatory_var] + continuous_controls + fixed_effect_vars
+
+    # =========================
+    # Load data (read once, keep only required columns)
+    # =========================
+    data = pd.read_csv(input_tsv_path, sep=tsv_separator, low_memory=False)
+    df = data.loc[:, required_columns].copy()
+
+    # =========================
+    # Transform dependent variable
+    # =========================
+    df[dependent_var] = df[dependent_var] / distance_unit_km
+
+    # =========================
+    # Scale continuous controls (min-max scaling)
+    # =========================
+    for col in continuous_controls:
+        df[col] = minmax_scale(df[col])
+
+    # =========================
+    # Cast fixed-effect variables to categorical where appropriate
+    # =========================
+    df["Application year"] = df["Application year"].astype("int64").astype("category")
+    df["Technological field"] = df["Technological field"].astype("category")
+
+    # =========================
+    # Helper: build design matrix with consistent dummy encoding
+    # =========================
+    def build_design_matrix(selected_columns, dummy_columns):
+        """
+        Create a design matrix by selecting columns, then applying one-hot encoding
+        for the specified dummy columns with drop_first=True.
+        """
+        return pd.get_dummies(
+            df.loc[:, selected_columns],
+            columns=list(dummy_columns),
+            drop_first=True,
+            dtype=int,
+        )
+
+    # =========================
+    # Model specifications (keep logic the same)
+    # =========================
+    model1_columns = [key_explanatory_var] + continuous_controls
+    model2_columns = [key_explanatory_var] + fixed_effect_vars
+    model3_columns = [key_explanatory_var] + continuous_controls + fixed_effect_vars
+
+    model1_dummy_cols = [key_explanatory_var]
+    model2_dummy_cols = [key_explanatory_var] + fixed_effect_vars
+    model3_dummy_cols = [key_explanatory_var] + fixed_effect_vars
+
+    X_model_1 = build_design_matrix(model1_columns, model1_dummy_cols)
+    X_model_2 = build_design_matrix(model2_columns, model2_dummy_cols)
+    X_model_3 = build_design_matrix(model3_columns, model3_dummy_cols)
+
+    # Keep your original diagnostic print (gender dummy columns)
+    X_gender_only = build_design_matrix([key_explanatory_var], [key_explanatory_var])
+    print(X_gender_only.columns)
+
+    y = df.loc[:, [dependent_var]]
+
+    # =========================
+    # Run regressions
+    # =========================
+    reg_result_1 = fit_ols_with_constant(X_model_1, y)
+    reg_result_2 = fit_ols_with_constant(X_model_2, y)
+    reg_result_3 = fit_ols_with_constant(X_model_3, y)
+
+    # =========================
+    # Table settings
+    # =========================
+    # Regressor order: Gender dummy -> constant -> continuous controls
+    # NOTE: If the dummy name differs (e.g., Gender_female), adjust it here.
+    regressor_order = [f"{key_explanatory_var}_1_female", "const"] + continuous_controls
+
+    # Do not omit anything explicitly (keep behavior consistent with your current code)
+    drop_omitted = []
+
+    # Extra model stats
+    info_dict = {
+        "Observation": lambda x: str(int(x.nobs)),
+        "F-statistic": lambda x: str(int(x.fvalue)),
+        "F-p_value": lambda x: str(int(x.f_pvalue)),
+        "df_model": lambda x: str(int(x.df_model)),
+        "Log-likelihood": lambda x: str(int(x.llf)),
+        "AIC": lambda x: str(int(x.aic)),
+    }
+
+    # =========================
+    # Generate and export summary table
+    # =========================
+    summary = summary_col(
+        [reg_result_1, reg_result_2, reg_result_3],
+        regressor_order=regressor_order,
+        drop_omitted=drop_omitted,
+        stars=True,
+        info_dict=info_dict,
+    )
+
+    summary.tables[0].to_csv(output_table_path, sep=tsv_separator)
+    print(summary)
+
+if __name__ == '__main__':
+
+  Gender_difference()
+
+
+
+
+
+
