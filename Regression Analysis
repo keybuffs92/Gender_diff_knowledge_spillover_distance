@@ -18,8 +18,8 @@ def Gender_difference():
     key_explanatory_var = "Gender"
     distance_unit_km = 1000  # Convert distance to 'thousand km' by dividing by 1000
 
-    input_tsv_path = "../data_revise/revise_pat_distance_original3_mean_regr_data_update_final.tsv"
-    output_table_path = f"../Empirical_result_include_examiner/revise_result_us_inventor_original3_{key_explanatory_var}.csv"
+    input_tsv_path = "input_data.tsv" # Gender_difference_regr_data.tsv
+    output_table_path = "result.csv"
     tsv_separator = "\t"
 
     # =========================
